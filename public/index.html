@@ -1,0 +1,606 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DG-Lab Kana Lernspiel</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Noto+Sans+JP:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        body { 
+            font-family: 'Inter', sans-serif; 
+        }
+        .kana-font {
+            font-family: 'Noto Sans JP', sans-serif;
+        }
+        .glass {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+        .pulse-dot {
+            animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+        }
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: .5; }
+        }
+        .slide-in {
+            animation: slideIn 0.3s ease-out;
+        }
+        @keyframes slideIn {
+            from { transform: translateY(-10px); opacity: 0; }
+            to { transform: translateY(0); opacity: 1; }
+        }
+        .shake {
+            animation: shake 0.5s cubic-bezier(.36,.07,.19,.97) both;
+        }
+        @keyframes shake {
+            10%, 90% { transform: translate3d(-1px, 0, 0); }
+            20%, 80% { transform: translate3d(2px, 0, 0); }
+            30%, 50%, 70% { transform: translate3d(-4px, 0, 0); }
+            40%, 60% { transform: translate3d(4px, 0, 0); }
+        }
+        .button-correct {
+            background: linear-gradient(135deg, #10b981 0%, #059669 100%) !important;
+            transform: scale(1.05);
+        }
+        .button-wrong {
+            background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%) !important;
+            animation: shake 0.5s;
+        }
+        .kana-display {
+            font-size: 8rem;
+            line-height: 1;
+            text-shadow: 0 0 30px rgba(139, 92, 246, 0.5);
+        }
+    </style>
+</head>
+<body class="bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 min-h-screen text-white">
+    <div class="container mx-auto px-4 py-8 max-w-2xl">
+        <!-- Header -->
+        <div class="text-center mb-8">
+            <h1 class="text-4xl font-bold mb-2 bg-gradient-to-r from-pink-500 to-violet-500 bg-clip-text text-transparent">
+                🎂 Kana Lernspiel
+            </h1>
+            <p class="text-slate-400">DG-Lab Coyote 3.0</p>
+        </div>
+
+        <!-- Status Card -->
+        <div class="glass rounded-2xl p-4 mb-6">
+            <div class="flex items-center justify-between mb-4">
+                <div class="flex items-center gap-3">
+                    <div id="statusDot" class="w-4 h-4 rounded-full bg-red-500"></div>
+                    <div>
+                        <h2 class="text-lg font-semibold">Verbindungsstatus</h2>
+                        <p id="statusText" class="text-slate-400 text-sm">Nicht verbunden</p>
+                    </div>
+                </div>
+                <div class="text-right">
+                    <p class="text-sm text-slate-400">Score</p>
+                    <p id="scoreDisplay" class="text-2xl font-bold">0/0</p>
+                </div>
+            </div>
+            <!-- Stärke Steuerung -->
+            <div class="border-t border-white/10 pt-4 space-y-3">
+                <!-- Kanal A -->
+                <div class="flex items-center gap-3">
+                    <div class="flex-1">
+                        <label class="block text-sm text-slate-400 mb-1">Stärke A (0-200)</label>
+                        <div class="flex gap-2">
+                            <input type="number" id="strengthInputA" min="0" max="200" value="10" 
+                                   class="flex-1 bg-slate-800/50 border border-slate-700 rounded-xl px-3 py-2 
+                                          text-white text-sm placeholder-slate-500 focus:outline-none focus:border-purple-500 
+                                          transition-colors">
+                            <button onclick="sendStrength('A')" 
+                                    class="bg-gradient-to-r from-yellow-600 to-orange-600 
+                                           hover:from-yellow-500 hover:to-orange-500 text-white font-semibold 
+                                           py-2 px-4 rounded-xl transition-all text-sm">
+                                Setzen
+                            </button>
+                        </div>
+                    </div>
+                    <div class="text-right min-w-[60px]">
+                        <p class="text-sm text-slate-400">Aktuell</p>
+                        <p id="currentStrengthA" class="text-xl font-bold text-yellow-400">-</p>
+                    </div>
+                </div>
+                <!-- Kanal B -->
+                <div class="flex items-center gap-3">
+                    <div class="flex-1">
+                        <label class="block text-sm text-slate-400 mb-1">Stärke B (0-200)</label>
+                        <div class="flex gap-2">
+                            <input type="number" id="strengthInputB" min="0" max="200" value="10" 
+                                   class="flex-1 bg-slate-800/50 border border-slate-700 rounded-xl px-3 py-2 
+                                          text-white text-sm placeholder-slate-500 focus:outline-none focus:border-purple-500 
+                                          transition-colors">
+                            <button onclick="sendStrength('B')" 
+                                    class="bg-gradient-to-r from-cyan-600 to-blue-600 
+                                           hover:from-cyan-500 hover:to-blue-500 text-white font-semibold 
+                                           py-2 px-4 rounded-xl transition-all text-sm">
+                                Setzen
+                            </button>
+                        </div>
+                    </div>
+                    <div class="text-right min-w-[60px]">
+                        <p class="text-sm text-slate-400">Aktuell</p>
+                        <p id="currentStrengthB" class="text-xl font-bold text-cyan-400">-</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Connect Button (nur wenn nicht verbunden) -->
+        <button id="connectBtn" onclick="showQRModal()" 
+                class="w-full bg-gradient-to-r from-violet-600 to-purple-600 hover:from-violet-500 hover:to-purple-500 
+                       text-white font-semibold py-4 px-6 rounded-2xl transition-all transform hover:scale-[1.02] 
+                       active:scale-[0.98] shadow-lg shadow-purple-500/25 mb-6">
+            <span class="flex items-center justify-center gap-2">
+                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
+                          d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z"/>
+                </svg>
+                Mit App verbinden
+            </span>
+        </button>
+
+        <!-- Modus Auswahl -->
+        <div id="modeSelection" class="glass rounded-2xl p-6 mb-6">
+            <h3 class="text-lg font-semibold mb-4 text-center">Wähle den Lernmodus</h3>
+            <div class="grid grid-cols-2 gap-4">
+                <button onclick="startGame('hiragana')" 
+                        class="bg-gradient-to-r from-pink-600 to-rose-600 hover:from-pink-500 hover:to-rose-500 
+                               text-white font-bold py-6 px-4 rounded-2xl transition-all transform hover:scale-[1.02] 
+                               active:scale-[0.98] shadow-lg shadow-pink-500/25">
+                    <div class="text-4xl mb-2">あ</div>
+                    <div>Hiragana</div>
+                </button>
+                <button onclick="startGame('katakana')" 
+                        class="bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-500 hover:to-cyan-500 
+                               text-white font-bold py-6 px-4 rounded-2xl transition-all transform hover:scale-[1.02] 
+                               active:scale-[0.98] shadow-lg shadow-blue-500/25">
+                    <div class="text-4xl mb-2">ア</div>
+                    <div>Katakana</div>
+                </button>
+            </div>
+        </div>
+
+        <!-- Spielbereich (initial versteckt) -->
+        <div id="gameArea" class="hidden">
+            <!-- Kana Anzeige -->
+            <div class="glass rounded-2xl p-8 mb-6 text-center">
+                <div id="kanaDisplay" class="kana-font kana-display text-white mb-4">あ</div>
+                <div id="kanaInfo" class="text-slate-400 text-sm">Was ist das für ein Zeichen?</div>
+            </div>
+
+            <!-- Antwort Buttons -->
+            <div id="answerButtons" class="grid grid-cols-2 gap-4 mb-6">
+                <button id="btn0" onclick="checkAnswer(0)" 
+                        class="glass hover:bg-white/10 text-white font-bold py-6 px-4 rounded-2xl 
+                               transition-all text-2xl">a</button>
+                <button id="btn1" onclick="checkAnswer(1)" 
+                        class="glass hover:bg-white/10 text-white font-bold py-6 px-4 rounded-2xl 
+                               transition-all text-2xl">i</button>
+                <button id="btn2" onclick="checkAnswer(2)" 
+                        class="glass hover:bg-white/10 text-white font-bold py-6 px-4 rounded-2xl 
+                               transition-all text-2xl">u</button>
+                <button id="btn3" onclick="checkAnswer(3)" 
+                        class="glass hover:bg-white/10 text-white font-bold py-6 px-4 rounded-2xl 
+                               transition-all text-2xl">e</button>
+            </div>
+
+            <!-- Feedback -->
+            <div id="feedback" class="text-center mb-6 hidden">
+                <div id="feedbackText" class="text-2xl font-bold mb-2"></div>
+                <div id="feedbackSub" class="text-slate-400"></div>
+            </div>
+
+            <!-- Nächste Button -->
+            <button id="nextBtn" onclick="nextQuestion()" 
+                    class="w-full hidden bg-gradient-to-r from-green-600 to-emerald-600 
+                           hover:from-green-500 hover:to-emerald-500 text-white font-bold py-4 px-6 
+                           rounded-2xl transition-all transform hover:scale-[1.02] active:scale-[0.98] 
+                           shadow-lg shadow-green-500/25">
+                Nächstes Zeichen →
+            </button>
+
+            <!-- Zurück zur Modusauswahl -->
+            <button onclick="showModeSelection()" 
+                    class="w-full mt-4 glass hover:bg-white/10 text-white font-medium py-3 px-4 
+                           rounded-xl transition-all text-sm">
+                ← Zurück zur Modusauswahl
+            </button>
+        </div>
+
+        <!-- Log -->
+        <div class="glass rounded-2xl p-4 mt-6">
+            <h3 class="text-sm font-semibold text-slate-400 mb-2">Log</h3>
+            <div id="logContainer" class="h-32 overflow-y-auto text-xs font-mono space-y-1 
+                                          scrollbar-thin scrollbar-thumb-slate-700 scrollbar-track-transparent">
+                <div class="text-slate-500">Bereit...</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- QR Modal -->
+    <div id="qrModal" class="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 hidden 
+                              flex items-center justify-center p-4">
+        <div class="glass rounded-3xl p-8 max-w-md w-full slide-in">
+            <div class="flex justify-between items-center mb-6">
+                <h2 class="text-2xl font-bold">QR Code scannen</h2>
+                <button onclick="hideQRModal()" 
+                        class="text-slate-400 hover:text-white transition-colors">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                    </svg>
+                </button>
+            </div>
+            <div class="bg-white rounded-2xl p-4 mb-4 flex justify-center">
+                <div id="qrcode" style="width:256px;height:256px;"></div>
+            </div>
+            <p class="text-center text-slate-400 text-sm mb-4">
+                Öffne die DG-Lab App und scanne den QR-Code<br>
+                unter "Socket Control"
+            </p>
+            <div class="bg-slate-800/50 rounded-xl p-3 text-center">
+                <code id="qrUrl" class="text-xs text-purple-400 break-all"></code>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    <script>
+        const API_BASE = window.location.origin;
+        let statusCheckInterval;
+        let currentMode = '';
+        let currentQuestion = null;
+        let score = 0;
+        let totalQuestions = 0;
+        let answered = false;
+
+        // Hiragana Daten
+        const hiragana = [
+            { char: 'あ', romaji: 'a' }, { char: 'い', romaji: 'i' }, { char: 'う', romaji: 'u' },
+            { char: 'え', romaji: 'e' }, { char: 'お', romaji: 'o' },
+            { char: 'か', romaji: 'ka' }, { char: 'き', romaji: 'ki' }, { char: 'く', romaji: 'ku' },
+            { char: 'け', romaji: 'ke' }, { char: 'こ', romaji: 'ko' },
+            { char: 'さ', romaji: 'sa' }, { char: 'し', romaji: 'shi' }, { char: 'す', romaji: 'su' },
+            { char: 'せ', romaji: 'se' }, { char: 'そ', romaji: 'so' },
+            { char: 'た', romaji: 'ta' }, { char: 'ち', romaji: 'chi' }, { char: 'つ', romaji: 'tsu' },
+            { char: 'て', romaji: 'te' }, { char: 'と', romaji: 'to' },
+            { char: 'な', romaji: 'na' }, { char: 'に', romaji: 'ni' }, { char: 'ぬ', romaji: 'nu' },
+            { char: 'ね', romaji: 'ne' }, { char: 'の', romaji: 'no' },
+            { char: 'は', romaji: 'ha' }, { char: 'ひ', romaji: 'hi' }, { char: 'ふ', romaji: 'fu' },
+            { char: 'へ', romaji: 'he' }, { char: 'ほ', romaji: 'ho' },
+            { char: 'ま', romaji: 'ma' }, { char: 'み', romaji: 'mi' }, { char: 'む', romaji: 'mu' },
+            { char: 'め', romaji: 'me' }, { char: 'も', romaji: 'mo' },
+            { char: 'や', romaji: 'ya' }, { char: 'ゆ', romaji: 'yu' }, { char: 'よ', romaji: 'yo' },
+            { char: 'ら', romaji: 'ra' }, { char: 'り', romaji: 'ri' }, { char: 'る', romaji: 'ru' },
+            { char: 'れ', romaji: 're' }, { char: 'ろ', romaji: 'ro' },
+            { char: 'わ', romaji: 'wa' }, { char: 'を', romaji: 'wo' }, { char: 'ん', romaji: 'n' }
+        ];
+
+        // Katakana Daten
+        const katakana = [
+            { char: 'ア', romaji: 'a' }, { char: 'イ', romaji: 'i' }, { char: 'ウ', romaji: 'u' },
+            { char: 'エ', romaji: 'e' }, { char: 'オ', romaji: 'o' },
+            { char: 'カ', romaji: 'ka' }, { char: 'キ', romaji: 'ki' }, { char: 'ク', romaji: 'ku' },
+            { char: 'ケ', romaji: 'ke' }, { char: 'コ', romaji: 'ko' },
+            { char: 'サ', romaji: 'sa' }, { char: 'シ', romaji: 'shi' }, { char: 'ス', romaji: 'su' },
+            { char: 'セ', romaji: 'se' }, { char: 'ソ', romaji: 'so' },
+            { char: 'タ', romaji: 'ta' }, { char: 'チ', romaji: 'chi' }, { char: 'ツ', romaji: 'tsu' },
+            { char: 'テ', romaji: 'te' }, { char: 'ト', romaji: 'to' },
+            { char: 'ナ', romaji: 'na' }, { char: 'ニ', romaji: 'ni' }, { char: 'ヌ', romaji: 'nu' },
+            { char: 'ネ', romaji: 'ne' }, { char: 'ノ', romaji: 'no' },
+            { char: 'ハ', romaji: 'ha' }, { char: 'ヒ', romaji: 'hi' }, { char: 'フ', romaji: 'fu' },
+            { char: 'ヘ', romaji: 'he' }, { char: 'ホ', romaji: 'ho' },
+            { char: 'マ', romaji: 'ma' }, { char: 'ミ', romaji: 'mi' }, { char: 'ム', romaji: 'mu' },
+            { char: 'メ', romaji: 'me' }, { char: 'モ', romaji: 'mo' },
+            { char: 'ヤ', romaji: 'ya' }, { char: 'ユ', romaji: 'yu' }, { char: 'ヨ', romaji: 'yo' },
+            { char: 'ラ', romaji: 'ra' }, { char: 'リ', romaji: 'ri' }, { char: 'ル', romaji: 'ru' },
+            { char: 'レ', romaji: 're' }, { char: 'ロ', romaji: 'ro' },
+            { char: 'ワ', romaji: 'wa' }, { char: 'ヲ', romaji: 'wo' }, { char: 'ン', romaji: 'n' }
+        ];
+
+        // Status prüfen
+        async function checkStatus() {
+            try {
+                const res = await fetch(`${API_BASE}/status`);
+                const data = await res.json();
+                updateStatus(data);
+            } catch (err) {
+                updateStatus({ connected: false, clients: 0, bindings: 0 });
+            }
+        }
+
+        function updateStatus(data) {
+            const dot = document.getElementById('statusDot');
+            const text = document.getElementById('statusText');
+            const connectBtn = document.getElementById('connectBtn');
+
+            if (data.connected && data.bindings > 0) {
+                dot.className = 'w-4 h-4 rounded-full bg-green-500 pulse-dot';
+                text.textContent = 'Verbunden mit App';
+                connectBtn.classList.add('hidden');
+                // Aktualisiere Stärke-Anzeige
+                if (data.strength) {
+                    document.getElementById('currentStrengthA').textContent = data.strength.a;
+                    document.getElementById('currentStrengthB').textContent = data.strength.b;
+                }
+            } else if (data.clients > 0) {
+                dot.className = 'w-4 h-4 rounded-full bg-yellow-500 pulse-dot';
+                text.textContent = 'Warte auf App...';
+                connectBtn.classList.remove('hidden');
+            } else {
+                dot.className = 'w-4 h-4 rounded-full bg-red-500';
+                text.textContent = 'Nicht verbunden';
+                connectBtn.classList.remove('hidden');
+            }
+        }
+
+        // QR Modal
+        function showQRModal() {
+            document.getElementById('qrModal').classList.remove('hidden');
+            
+            fetch(`${API_BASE}/status`)
+                .then(r => r.json())
+                .then(data => {
+                    const qrUrl = data.qrUrl || '';
+                    document.getElementById('qrUrl').textContent = qrUrl;
+                    
+                    const container = document.getElementById('qrcode');
+                    container.innerHTML = '';
+                    
+                    if (qrUrl && typeof QRCode !== 'undefined') {
+                        try {
+                            new QRCode(container, {
+                                text: qrUrl,
+                                width: 256,
+                                height: 256,
+                                colorDark: "#000000",
+                                colorLight: "#ffffff",
+                                correctLevel: QRCode.CorrectLevel.M
+                            });
+                        } catch (e) {
+                            console.error('QR-Code Fehler:', e);
+                        }
+                    }
+                });
+        }
+
+        function hideQRModal() {
+            document.getElementById('qrModal').classList.add('hidden');
+        }
+
+        // Spiel Funktionen
+        function startGame(mode) {
+            currentMode = mode;
+            score = 0;
+            totalQuestions = 0;
+            updateScore();
+            
+            document.getElementById('modeSelection').classList.add('hidden');
+            document.getElementById('gameArea').classList.remove('hidden');
+            
+            nextQuestion();
+            log(`🎮 ${mode === 'hiragana' ? 'Hiragana' : 'Katakana'} Spiel gestartet`, 'info');
+        }
+
+        function showModeSelection() {
+            document.getElementById('modeSelection').classList.remove('hidden');
+            document.getElementById('gameArea').classList.add('hidden');
+            currentMode = '';
+        }
+
+        function getRandomQuestion() {
+            const data = currentMode === 'hiragana' ? hiragana : katakana;
+            const correct = data[Math.floor(Math.random() * data.length)];
+            
+            // Sammle falsche Antworten
+            const wrongAnswers = [];
+            while (wrongAnswers.length < 3) {
+                const random = data[Math.floor(Math.random() * data.length)];
+                if (random.romaji !== correct.romaji && !wrongAnswers.includes(random.romaji)) {
+                    wrongAnswers.push(random.romaji);
+                }
+            }
+            
+            // Mische alle Antworten
+            const allAnswers = [correct.romaji, ...wrongAnswers];
+            for (let i = allAnswers.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [allAnswers[i], allAnswers[j]] = [allAnswers[j], allAnswers[i]];
+            }
+            
+            return {
+                char: correct.char,
+                correct: correct.romaji,
+                answers: allAnswers
+            };
+        }
+
+        function nextQuestion() {
+            answered = false;
+            currentQuestion = getRandomQuestion();
+            
+            // Zeige Kana
+            document.getElementById('kanaDisplay').textContent = currentQuestion.char;
+            
+            // Setze Buttons
+            for (let i = 0; i < 4; i++) {
+                const btn = document.getElementById(`btn${i}`);
+                btn.textContent = currentQuestion.answers[i];
+                btn.className = 'glass hover:bg-white/10 text-white font-bold py-6 px-4 rounded-2xl transition-all text-2xl';
+                btn.disabled = false;
+            }
+            
+            // Verstecke Feedback und Nächste Button
+            document.getElementById('feedback').classList.add('hidden');
+            document.getElementById('nextBtn').classList.add('hidden');
+        }
+
+        async function checkAnswer(index) {
+            if (answered) return;
+            answered = true;
+            
+            const selectedAnswer = currentQuestion.answers[index];
+            const isCorrect = selectedAnswer === currentQuestion.correct;
+            
+            // Markiere Buttons
+            for (let i = 0; i < 4; i++) {
+                const btn = document.getElementById(`btn${i}`);
+                btn.disabled = true;
+                
+                if (currentQuestion.answers[i] === currentQuestion.correct) {
+                    btn.classList.add('button-correct');
+                } else if (i === index && !isCorrect) {
+                    btn.classList.add('button-wrong');
+                }
+            }
+            
+            // Zeige Feedback
+            const feedback = document.getElementById('feedback');
+            const feedbackText = document.getElementById('feedbackText');
+            const feedbackSub = document.getElementById('feedbackSub');
+            
+            feedback.classList.remove('hidden');
+            
+            if (isCorrect) {
+                score++;
+                feedbackText.textContent = '✅ Richtig!';
+                feedbackText.className = 'text-2xl font-bold mb-2 text-green-400';
+                feedbackSub.textContent = `${currentQuestion.char} = ${currentQuestion.correct}`;
+                log(`✅ Richtig: ${currentQuestion.char} = ${currentQuestion.correct}`, 'success');
+            } else {
+                feedbackText.textContent = '❌ Falsch!';
+                feedbackText.className = 'text-2xl font-bold mb-2 text-red-400';
+                feedbackSub.textContent = `Richtig wäre: ${currentQuestion.char} = ${currentQuestion.correct}`;
+                log(`❌ Falsch: ${currentQuestion.char} = ${currentQuestion.correct} (du hast ${selectedAnswer} gewählt)`, 'error');
+                
+                // Sende Punish Waveform
+                await sendPunish();
+            }
+            
+            totalQuestions++;
+            updateScore();
+            
+            // Zeige Nächste Button
+            document.getElementById('nextBtn').classList.remove('hidden');
+        }
+
+        function updateScore() {
+            document.getElementById('scoreDisplay').textContent = `${score}/${totalQuestions}`;
+        }
+
+        // Stärke senden
+        async function sendStrength(channel) {
+            const inputId = channel === 'A' ? 'strengthInputA' : 'strengthInputB';
+            const displayId = channel === 'A' ? 'currentStrengthA' : 'currentStrengthB';
+            const value = parseInt(document.getElementById(inputId).value);
+            
+            if (isNaN(value) || value < 0 || value > 200) {
+                log(`❌ Kanal ${channel}: Ungültiger Wert (0-200)`, 'error');
+                return;
+            }
+
+            try {
+                const res = await fetch(`${API_BASE}/api/strength`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ channel, value })
+                });
+                const data = await res.json();
+                if (data.success) {
+                    log(`✅ Stärke ${channel} auf ${value} gesendet`, 'success');
+                    // Warte kurz und prüfe die tatsächliche Stärke
+                    setTimeout(async () => {
+                        try {
+                            const statusRes = await fetch(`${API_BASE}/status`);
+                            const statusData = await statusRes.json();
+                            if (statusData.strength) {
+                                const actualStrength = channel === 'A' ? statusData.strength.a : statusData.strength.b;
+                                document.getElementById(displayId).textContent = actualStrength;
+                                if (actualStrength === value) {
+                                    log(`✅ Stärke ${channel} bestätigt: ${actualStrength}`, 'success');
+                                } else {
+                                    log(`⚠️ Stärke ${channel} unterschiedlich: Gesendet ${value}, App zeigt ${actualStrength}`, 'warning');
+                                }
+                            }
+                        } catch (e) {
+                            log('❌ Fehler beim Prüfen der Stärke', 'error');
+                        }
+                    }, 500);
+                } else {
+                    log(`❌ Fehler beim Setzen ${channel} - App nicht verbunden?`, 'error');
+                }
+            } catch (err) {
+                log('❌ Netzwerkfehler', 'error');
+            }
+        }
+
+        // Punish senden
+        async function sendPunish() {
+            const waveform = [];
+            for (let i = 0; i < 20; i++) {
+                waveform.push('0f0f0f0f64646464'); // 15Hz, 100% Intensität
+            }
+
+            try {
+                // Sende an Kanal A
+                const resA = await fetch(`${API_BASE}/api/pulse`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ channel: 'A', waveform })
+                });
+                const dataA = await resA.json();
+                
+                // Sende an Kanal B
+                const resB = await fetch(`${API_BASE}/api/pulse`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ channel: 'B', waveform })
+                });
+                const dataB = await resB.json();
+                
+                if (dataA.success && dataB.success) {
+                    log('⚡ Punish-Waveform auf Kanal A & B gesendet (2s)', 'warning');
+                } else if (dataA.success) {
+                    log('⚡ Punish-Waveform auf Kanal A gesendet (Kanal B fehlgeschlagen)', 'warning');
+                } else if (dataB.success) {
+                    log('⚡ Punish-Waveform auf Kanal B gesendet (Kanal A fehlgeschlagen)', 'warning');
+                } else {
+                    log('❌ Punish fehlgeschlagen - App nicht verbunden?', 'error');
+                }
+            } catch (err) {
+                log('❌ Netzwerkfehler beim Punish', 'error');
+            }
+        }
+
+        // Log
+        function log(message, type = 'info') {
+            const container = document.getElementById('logContainer');
+            const div = document.createElement('div');
+            const time = new Date().toLocaleTimeString('de-DE');
+            
+            let color = 'text-slate-300';
+            if (type === 'error') color = 'text-red-400';
+            if (type === 'success') color = 'text-green-400';
+            if (type === 'warning') color = 'text-yellow-400';
+            
+            div.className = `${color}`;
+            div.textContent = `[${time}] ${message}`;
+            container.appendChild(div);
+            container.scrollTop = container.scrollHeight;
+        }
+
+        // Init
+        checkStatus();
+        statusCheckInterval = setInterval(checkStatus, 2000);
+
+        // Modal schließen bei Klick außerhalb
+        document.getElementById('qrModal').addEventListener('click', (e) => {
+            if (e.target === e.currentTarget) hideQRModal();
+        });
+    </script>
+</body>
+</html>
