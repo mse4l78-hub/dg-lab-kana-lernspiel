@@ -8,12 +8,35 @@ const WebSocket = require('ws');
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
+const { networkInterfaces } = require('os');
 const { v4: uuidv4 } = require('uuid');
 const QRCode = require('qrcode');
 
-const PORT = process.env.DG_LAB_PORT || 18888;
-const SERVER_IP = '192.168.0.168';
+const CONFIG_FILE = path.join(__dirname, 'config.json');
 const CONTROL_ID_FILE = path.join(process.env.HOME, '.dg-lab-control-id');
+
+// Lade oder erstelle Konfiguration
+function loadConfig() {
+    if (fs.existsSync(CONFIG_FILE)) {
+        try {
+            return JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf8'));
+        } catch (e) {
+            console.error('[DG-Lab] Fehler beim Laden der Config:', e.message);
+        }
+    }
+    return { serverIp: null, port: 18886 };
+}
+
+function saveConfig(config) {
+    fs.writeFileSync(CONFIG_FILE, JSON.stringify(config, null, 2));
+}
+
+let config = loadConfig();
+let SERVER_IP = config.serverIp;
+let PORT = config.port || 18886;
+
+// Prüfe ob Server bereits konfiguriert ist
+let isConfigured = !!SERVER_IP;
 
 // Stärke-Werte (werden aus App-Feedback aktualisiert)
 let currentStrengthA = 0;
@@ -33,8 +56,8 @@ if (fs.existsSync(CONTROL_ID_FILE)) {
 }
 
 // Maps
-const clients = new Map(); // clientId -> { ws, isControl, controlId }
-const bindings = new Map(); // clientId -> partnerId
+const clients = new Map();
+const bindings = new Map();
 const validControlIds = new Set([PERSISTENT_CONTROL_ID]);
 
 // HTTP Server für QR-Code und Status
@@ -51,8 +74,97 @@ const httpServer = http.createServer(async (req, res) => {
 
     const url = new URL(req.url, `http://${req.headers.host}`);
 
+    // API: Konfiguration laden
+    if (url.pathname === '/api/config') {
+        if (req.method === 'GET') {
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({
+                serverIp: SERVER_IP,
+                port: PORT,
+                configured: isConfigured
+            }));
+        } else if (req.method === 'POST') {
+            let body = '';
+            req.on('data', chunk => body += chunk);
+            req.on('end', () => {
+                try {
+                    const newConfig = JSON.parse(body);
+                    if (newConfig.serverIp) {
+                        config.serverIp = newConfig.serverIp;
+                        config.port = newConfig.port || 18886;
+                        saveConfig(config);
+                        SERVER_IP = config.serverIp;
+                        PORT = config.port;
+                        isConfigured = true;
+                        
+                        // Starte WebSocket Server wenn noch nicht gestartet
+                        if (!wss) {
+                            startWebSocketServer();
+                            console.log('[DG-Lab] WebSocket Server gestartet nach Konfiguration');
+                        }
+                        
+                        res.writeHead(200, { 'Content-Type': 'application/json' });
+                        res.end(JSON.stringify({ success: true }));
+                        console.log('[DG-Lab] Neue Konfiguration gespeichert:', SERVER_IP, PORT);
+                    } else {
+                        res.writeHead(400, { 'Content-Type': 'application/json' });
+                        res.end(JSON.stringify({ error: 'IP-Adresse fehlt' }));
+                    }
+                } catch (e) {
+                    res.writeHead(400, { 'Content-Type': 'application/json' });
+                    res.end(JSON.stringify({ error: e.message }));
+                }
+            });
+        }
+        return;
+    }
+
+    // API: IP automatisch erkennen
+    if (url.pathname === '/api/detect-ip') {
+        const interfaces = networkInterfaces();
+        let detectedIp = null;
+        for (const name of Object.keys(interfaces)) {
+            for (const iface of interfaces[name]) {
+                if (iface.family === 'IPv4' && !iface.internal) {
+                    detectedIp = iface.address;
+                    break;
+                }
+            }
+            if (detectedIp) break;
+        }
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ ip: detectedIp }));
+        return;
+    }
+
+    // API: Server-Status
+    if (url.pathname === '/api/server-status') {
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({
+            running: isConfigured && wss && httpServer.listening,
+            configured: isConfigured,
+            serverIp: SERVER_IP,
+            port: PORT
+        }));
+        return;
+    }
+
+    // Wenn nicht konfiguriert, zeige Setup-Seite
+    if (!isConfigured) {
+        if (url.pathname === '/' || url.pathname === '/setup') {
+            try {
+                const html = fs.readFileSync(path.join(__dirname, 'public', 'setup.html'), 'utf8');
+                res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+                res.end(html);
+            } catch (e) {
+                res.writeHead(500);
+                res.end('Fehler beim Laden der Setup-Seite: ' + e.message);
+            }
+            return;
+        }
+    }
+
     if (url.pathname === '/qr') {
-        // QR-Code Seite
         const qrUrl = `https://www.dungeon-lab.com/app-download.php#DGLAB-SOCKET#ws://${SERVER_IP}:${PORT}/${PERSISTENT_CONTROL_ID}`;
         res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
         res.end(`
@@ -87,7 +199,6 @@ const httpServer = http.createServer(async (req, res) => {
 </body>
 </html>`);
     } else if (url.pathname === '/qr.png') {
-        // QR-Code als PNG serverseitig generieren
         try {
             const qrUrl = `https://www.dungeon-lab.com/app-download.php#DGLAB-SOCKET#ws://${SERVER_IP}:${PORT}/${PERSISTENT_CONTROL_ID}`;
             const pngBuffer = await QRCode.toBuffer(qrUrl, { width: 256, margin: 2 });
@@ -98,7 +209,6 @@ const httpServer = http.createServer(async (req, res) => {
             res.end('Fehler beim Generieren des QR-Codes');
         }
     } else if (url.pathname === '/status') {
-        // Status JSON
         const qrUrl = `https://www.dungeon-lab.com/app-download.php#DGLAB-SOCKET#ws://${SERVER_IP}:${PORT}/${PERSISTENT_CONTROL_ID}`;
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({
@@ -144,7 +254,6 @@ const httpServer = http.createServer(async (req, res) => {
             }
         });
     } else if (url.pathname === '/command' && req.method === 'POST') {
-        // Direkter Befehl
         let body = '';
         req.on('data', chunk => body += chunk);
         req.on('end', () => {
@@ -159,7 +268,6 @@ const httpServer = http.createServer(async (req, res) => {
             }
         });
     } else if (url.pathname === '/') {
-        // Haupt-Controller-Seite
         try {
             const html = fs.readFileSync(path.join(__dirname, 'public', 'index.html'), 'utf8');
             res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
@@ -175,7 +283,67 @@ const httpServer = http.createServer(async (req, res) => {
 });
 
 // WebSocket Server
-const wss = new WebSocket.Server({ server: httpServer });
+let wss = null;
+
+if (isConfigured) {
+    startWebSocketServer();
+}
+
+function startWebSocketServer() {
+    wss = new WebSocket.Server({ server: httpServer });
+
+    wss.on('connection', (ws, req) => {
+        const urlPath = (req.url || '').replace(/^\//, '');
+        let assignedControlId = null;
+        let isControl = false;
+
+        if (urlPath && validControlIds.has(urlPath)) {
+            assignedControlId = urlPath;
+            isControl = true;
+            console.log(`[DG-Lab] Control-Endpoint verbunden: ${assignedControlId}`);
+        }
+
+        const clientId = uuidv4();
+        clients.set(clientId, { ws, isControl, controlId: assignedControlId });
+
+        const bindMsg = {
+            type: 'bind',
+            clientId: clientId,
+            targetId: '',
+            message: 'targetId'
+        };
+        ws.send(JSON.stringify(bindMsg));
+        console.log(`[DG-Lab] Client verbunden: ${clientId}${assignedControlId ? ` (Control: ${assignedControlId})` : ''}`);
+
+        if (assignedControlId) {
+            bindings.set(assignedControlId, clientId);
+            bindings.set(clientId, assignedControlId);
+
+            const successMsg = {
+                type: 'bind',
+                clientId: assignedControlId,
+                targetId: clientId,
+                message: '200'
+            };
+            ws.send(JSON.stringify(successMsg));
+            console.log(`[DG-Lab] Auto-bound App (${clientId}) <-> Control (${assignedControlId})`);
+        }
+
+        startHeartbeat();
+
+        ws.on('message', (data) => {
+            handleMessage(data.toString(), clientId);
+        });
+
+        ws.on('close', () => {
+            handleDisconnect(clientId);
+        });
+
+        ws.on('error', (err) => {
+            console.error(`[DG-Lab] WebSocket Fehler für ${clientId}:`, err.message);
+        });
+    });
+}
 
 // Heartbeat
 let heartbeatTimer = null;
@@ -202,11 +370,9 @@ function startHeartbeat() {
     }, 20000);
 }
 
-// WICHTIG: Sende Befehl an alle gebundenen Apps
 function sendCommandToApps(commandStr) {
     let sent = false;
     bindings.forEach((partnerId, myId) => {
-        // Prüfe ob myId ein Control ist (im validControlIds Set)
         if (validControlIds.has(myId)) {
             const client = clients.get(partnerId);
             if (client && client.ws.readyState === WebSocket.OPEN) {
@@ -230,72 +396,14 @@ function sendCommandToApps(commandStr) {
     return sent;
 }
 
-wss.on('connection', (ws, req) => {
-    const urlPath = (req.url || '').replace(/^\//, '');
-    let assignedControlId = null;
-    let isControl = false;
-
-    // Prüfe ob dies ein Control-Endpunkt ist
-    if (urlPath && validControlIds.has(urlPath)) {
-        assignedControlId = urlPath;
-        isControl = true;
-        console.log(`[DG-Lab] Control-Endpoint verbunden: ${assignedControlId}`);
-    }
-
-    const clientId = uuidv4();
-    clients.set(clientId, { ws, isControl, controlId: assignedControlId });
-
-    // Sende initiale BIND Nachricht
-    const bindMsg = {
-        type: 'bind',
-        clientId: clientId,
-        targetId: '',
-        message: 'targetId'
-    };
-    ws.send(JSON.stringify(bindMsg));
-    console.log(`[DG-Lab] Client verbunden: ${clientId}${assignedControlId ? ` (Control: ${assignedControlId})` : ''}`);
-
-    // Auto-bind für QR-Verbindungen
-    if (assignedControlId) {
-        bindings.set(assignedControlId, clientId);
-        bindings.set(clientId, assignedControlId);
-
-        const successMsg = {
-            type: 'bind',
-            clientId: assignedControlId,
-            targetId: clientId,
-            message: '200'
-        };
-        ws.send(JSON.stringify(successMsg));
-        console.log(`[DG-Lab] Auto-bound App (${clientId}) <-> Control (${assignedControlId})`);
-    }
-
-    startHeartbeat();
-
-    ws.on('message', (data) => {
-        handleMessage(data.toString(), clientId);
-    });
-
-    ws.on('close', () => {
-        handleDisconnect(clientId);
-    });
-
-    ws.on('error', (err) => {
-        console.error(`[DG-Lab] WebSocket Fehler für ${clientId}:`, err.message);
-    });
-});
-
 function handleMessage(jsonData, senderClientId) {
     try {
         const msg = JSON.parse(jsonData);
-        const sender = clients.get(senderClientId);
 
-        // Heartbeat ignorieren
         if (msg.type === 'heartbeat') {
             return;
         }
 
-        // BIND Anfrage von App
         if (msg.type === 'bind' && msg.message === 'DGLAB' && msg.clientId && msg.targetId) {
             const controlEndId = msg.clientId;
             const appEndId = msg.targetId;
@@ -309,7 +417,6 @@ function handleMessage(jsonData, senderClientId) {
                 return;
             }
 
-            // Prüfe ob bereits gebunden
             if (bindings.has(controlEndId) && bindings.get(controlEndId) === appEndId) {
                 console.log(`[DG-Lab] Bereits gebunden: ${controlEndId} <-> ${appEndId}`);
                 return;
@@ -330,9 +437,7 @@ function handleMessage(jsonData, senderClientId) {
             }
             console.log(`[DG-Lab] Bound App (${appEndId}) <-> Control (${controlEndId})`);
         }
-        // MSG Weiterleitung
         else if (msg.type === 'msg' && msg.message) {
-            // Stärke-Feedback von App
             const strengthFeedback = msg.message.match(/^strength-(\d+)\+(\d+)\+(\d+)\+(\d+)$/);
             if (strengthFeedback) {
                 currentStrengthA = parseInt(strengthFeedback[1]);
@@ -342,13 +447,11 @@ function handleMessage(jsonData, senderClientId) {
                 console.log(`[DG-Lab] Stärke A:${currentStrengthA}/${maxStrengthA} B:${currentStrengthB}/${maxStrengthB}`);
             }
 
-            // Feedback Buttons
             const feedbackMatch = msg.message.match(/^feedback-(\d)$/);
             if (feedbackMatch) {
                 console.log(`[DG-Lab] APP Feedback Button gedrückt: index=${feedbackMatch[1]}`);
             }
 
-            // Weiterleiten an Partner
             if (msg.targetId) {
                 const recipient = clients.get(msg.targetId);
                 if (recipient && recipient.ws.readyState === WebSocket.OPEN) {
@@ -388,8 +491,6 @@ function handleDisconnect(clientId) {
 
 // API Funktionen für externe Steuerung
 function setStrength(channel, value) {
-    // channel: 'A' oder 'B', value: 0-200
-    // Setzt die Stärke auf einen absoluten Wert
     const ch = channel === 'A' ? '1' : '2';
     const currentValue = channel === 'A' ? currentStrengthA : currentStrengthB;
     const diff = value - currentValue;
@@ -397,15 +498,12 @@ function setStrength(channel, value) {
     console.log(`[DG-Lab] Setze Stärke ${channel}: aktuell=${currentValue}, gewünscht=${value}, diff=${diff}`);
     
     if (diff > 0) {
-        // Erhöhen
         console.log(`[DG-Lab] Erhöhe um ${diff}`);
         return sendCommandToApps(`strength-${ch}+1+${diff}`);
     } else if (diff < 0) {
-        // Verringern
         console.log(`[DG-Lab] Verringere um ${Math.abs(diff)}`);
         return sendCommandToApps(`strength-${ch}+2+${Math.abs(diff)}`);
     }
-    // Keine Änderung nötig
     console.log(`[DG-Lab] Keine Änderung nötig`);
     return true;
 }
@@ -421,7 +519,6 @@ function subStrength(channel, delta) {
 }
 
 function sendPulse(channel, waveformHexArray) {
-    // waveformHexArray ist ein Array von Hex-Strings
     const waveformJson = JSON.stringify(waveformHexArray);
     return sendCommandToApps(`pulse-${channel}:${waveformJson}`);
 }
@@ -431,12 +528,16 @@ function clearQueue(channel) {
 }
 
 httpServer.listen(PORT, () => {
-    console.log(`[DG-Lab] Server läuft auf http://${SERVER_IP}:${PORT}`);
-    console.log(`[DG-Lab] WebSocket: ws://${SERVER_IP}:${PORT}/${PERSISTENT_CONTROL_ID}`);
-    console.log(`[DG-Lab] QR Code: http://${SERVER_IP}:${PORT}/qr`);
+    if (isConfigured) {
+        console.log(`[DG-Lab] Server läuft auf http://${SERVER_IP}:${PORT}`);
+        console.log(`[DG-Lab] WebSocket: ws://${SERVER_IP}:${PORT}/${PERSISTENT_CONTROL_ID}`);
+        console.log(`[DG-Lab] QR Code: http://${SERVER_IP}:${PORT}/qr`);
+    } else {
+        console.log(`[DG-Lab] Setup-Modus: http://localhost:${PORT}`);
+        console.log('[DG-Lab] Bitte konfiguriere die Server-IP zuerst!');
+    }
 });
 
-// Exportiere API für Module
 module.exports = {
     setStrength,
     addStrength,
