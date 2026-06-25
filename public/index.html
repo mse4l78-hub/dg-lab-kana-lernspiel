@@ -81,6 +81,17 @@
                     <p id="scoreDisplay" class="text-2xl font-bold">0/0</p>
                 </div>
             </div>
+            <!-- Punish Dauer -->
+            <div class="border-t border-white/10 pt-4">
+                <label class="block text-sm text-slate-400 mb-1">Punish Dauer: <span id="punishDurationValue">2000</span>ms</label>
+                <input type="range" id="punishDuration" min="100" max="5000" step="100" value="2000"
+                       class="w-full h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-purple-500"
+                       oninput="document.getElementById('punishDurationValue').textContent = this.value">
+                <div class="flex justify-between text-xs text-slate-500 mt-1">
+                    <span>100ms</span>
+                    <span>5s</span>
+                </div>
+            </div>
             <!-- Stärke Steuerung -->
             <div class="border-t border-white/10 pt-4 space-y-3">
                 <!-- Kanal A -->
@@ -540,8 +551,10 @@
 
         // Punish senden
         async function sendPunish() {
+            const durationMs = parseInt(document.getElementById('punishDuration').value) || 2000;
+            const pulseCount = Math.max(1, Math.round(durationMs / 100));
             const waveform = [];
-            for (let i = 0; i < 20; i++) {
+            for (let i = 0; i < pulseCount; i++) {
                 waveform.push('0f0f0f0f64646464'); // 15Hz, 100% Intensität
             }
 
@@ -562,12 +575,13 @@
                 });
                 const dataB = await resB.json();
                 
+                const durationSec = (durationMs / 1000).toFixed(1);
                 if (dataA.success && dataB.success) {
-                    log('⚡ Punish-Waveform auf Kanal A & B gesendet (2s)', 'warning');
+                    log(`⚡ Punish-Waveform auf Kanal A & B gesendet (${durationSec}s)`, 'warning');
                 } else if (dataA.success) {
-                    log('⚡ Punish-Waveform auf Kanal A gesendet (Kanal B fehlgeschlagen)', 'warning');
+                    log(`⚡ Punish-Waveform auf Kanal A gesendet (${durationSec}s, Kanal B fehlgeschlagen)`, 'warning');
                 } else if (dataB.success) {
-                    log('⚡ Punish-Waveform auf Kanal B gesendet (Kanal A fehlgeschlagen)', 'warning');
+                    log(`⚡ Punish-Waveform auf Kanal B gesendet (${durationSec}s, Kanal A fehlgeschlagen)`, 'warning');
                 } else {
                     log('❌ Punish fehlgeschlagen - App nicht verbunden?', 'error');
                 }
